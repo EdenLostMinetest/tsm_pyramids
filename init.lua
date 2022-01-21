@@ -46,6 +46,12 @@ local chest_stuff = {
 		{name="default:bush_sapling", max = 1},
 		{name="default:pick_bronze", max = 1},
 	},
+	ice = {
+		{name="default:mese_crystal", max = 4},
+		{name="default:gold_ingot", max = 10},
+		{name="default:pick_diamond", max = 1},
+		{name="ethereal:crystal_spike", max = 1},
+	},
 }
 
 if minetest.get_modpath("farming") then
@@ -410,7 +416,7 @@ minetest.register_on_generated(function(minp, maxp, seed)
 			make(p2, "default:sandstonebrick", "default:sandstone", "default:sandstone", "default:sand", "sandstone")
 		elseif sand == "default:ice" then
 			-- Ice pyramid
-			make(p2, "ethereal:icebrick", "default:ice", "default:ice", "default:snow", "sandstone")
+			make(p2, "ethereal:icebrick", "default:ice", "default:ice", "default:snow", "ice")
 		else
 			-- Desert stone pyramid
 			make(p2, "default:desert_stonebrick", "default:desert_stone_block", "default:desert_stone", "ignore", "desert_stone")
@@ -454,10 +460,14 @@ minetest.register_chatcommand("spawnpyramid", {
 			elseif s == 2 then
 				-- Desert sandstone
 				ok, msg = make(pos, "default:desert_sandstone_brick", "default:desert_sandstone", "default:desert_stone", "default:desert_sand", "desert_sandstone", room_id)
-			else
+			elseif s == 3 then
 				-- Desert stone
 				ok, msg = make(pos, "default:desert_stonebrick", "default:desert_stone_block", "default:desert_stone", "ignore", "desert_stone", room_id)
+			elseif s == 4 then
+				-- Ice pyramid
+				ok, msg = make(pos, "ethereal:icebrick", "default:ice", "default:ice", "default:snow", "ice", room_id)
 			end
+
 			if ok then
 				return true, S("Pyramid generated at @1.", minetest.pos_to_string(pos))
 			else
