@@ -266,7 +266,7 @@ local select_pyramid_type = function(minp, maxp)
 	local mpos = {x=math.random(minp.x,maxp.x), y=math.random(minp.y,maxp.y), z=math.random(minp.z,maxp.z)}
 
 	local sand
-	local sands = {"default:sand", "default:desert_sand", "default:desert_stone"}
+	local sands = {"default:sand", "default:desert_sand", "default:desert_stone", "default:ice"}
 	local p2
 	local psand = {}
 	local sand
@@ -332,7 +332,7 @@ minetest.register_on_generated(function(minp, maxp, seed)
 	end
 	local noise1 = perlin1:get_2d({x=minp.x,y=minp.y})
 
-	if noise1 > 0.25 or noise1 < -0.26 then
+	if noise1 > 0.125 or noise1 < -0.125 then
 		-- Need a bit of luck to place a pyramid
 		if math.random(0,10) > 7 then
 			minetest.log("verbose", "[tsm_pyramids] Pyramid not placed, bad dice roll. minp="..minetest.pos_to_string(minp))
@@ -408,6 +408,9 @@ minetest.register_on_generated(function(minp, maxp, seed)
 		elseif sand == "default:sand" then
 			-- Sandstone pyramid
 			make(p2, "default:sandstonebrick", "default:sandstone", "default:sandstone", "default:sand", "sandstone")
+		elseif sand == "default:ice" then
+			-- Ice pyramid
+			make(p2, "ethereal:icebrick", "default:ice", "default:ice", "default:snow", "sandstone")
 		else
 			-- Desert stone pyramid
 			make(p2, "default:desert_stonebrick", "default:desert_stone_block", "default:desert_stone", "ignore", "desert_stone")
