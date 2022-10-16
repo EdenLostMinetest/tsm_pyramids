@@ -228,20 +228,21 @@ MUMMY_DEF.on_step = function(self, dtime)
 	self.envdmg_timer = self.envdmg_timer + dtime
 	if dmg > 0 then
 		if self.envdmg_timer >= 1 then
-			self.envdmg_timer = 0
-			self.object:set_hp(self.object:get_hp()-dmg)
-			self.last_damage = {
-				type = "environment",
-				pos = current_pos,
-				node = current_node,
-			}
-			if self.object:get_hp() <= 0 then
+			local new_hp = self.object:get_hp() - dmg
+			if new_hp <= 0 then
 				if self.on_death then
 					self.on_death(self)
 				end
 				self.object:remove()
 				return
 			else
+				self.envdmg_timer = 0
+				self.object:set_hp(new_hp)
+				self.last_damage = {
+					type = "environment",
+					pos = current_pos,
+					node = current_node,
+				}
 				hit(self)
 				self.sound_timer = 0
 				minetest.sound_play(sound_hit, {pos = current_pos, max_hear_distance = 10, gain = 0.4}, true)
