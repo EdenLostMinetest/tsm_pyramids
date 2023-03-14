@@ -20,6 +20,6 @@ This old porous brick falls under its own weight.=
 No more mummies!=
 Destroy a mummy spawner by digging.=
 Generate a pyramid=
-[<room_type>]
-Pyramid generated at @1.
-Incorrect room type ID: @1
+[<room_type>]=
+Pyramid generated at @1.=
+Incorrect room type ID: @1=
