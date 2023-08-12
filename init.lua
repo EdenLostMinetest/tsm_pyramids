@@ -322,7 +322,7 @@ minetest.register_on_generated(function(minp, maxp, seed)
 	--[[ Make sure the pyramid doesn't bleed outside of maxp,
 	so it doesn't get placed incompletely by the mapgen.
 	This creates a bias somewhat, as this means there are some coordinates in
-        which pyramids cannot spawn. But it's still better to have broken pyramids.
+        which pyramids cannot spawn. But it's still better than to have broken pyramids.
 	]]
 	local limit = function(pos, maxp)
 		pos.x = math.min(pos.x, maxp.x - PYRA_W+1)
