@@ -69,14 +69,16 @@ local function mummy_update_visuals_def(self)
 end
 
 local MUMMY_DEF = {
-	hp_max = mummy_hp,
-	physical = true,
-	collisionbox = {-0.4, -0.01, -0.4, 0.4, 1.9, 0.4},
-	visual = "mesh",
-	visual_size = {x=8,y=8},
-	mesh = mummy_mesh,
-	textures = mummy_texture,
-	makes_footstep_sound = true,
+	initial_properties = {
+		hp_max = mummy_hp,
+		physical = true,
+		collisionbox = {-0.4, -0.01, -0.4, 0.4, 1.9, 0.4},
+		visual = "mesh",
+		visual_size = {x=8,y=8},
+		mesh = mummy_mesh,
+		textures = mummy_texture,
+		makes_footstep_sound = true,
+	},
 	npc_anim = 0,
 	timer = 0,
 	turn_timer = 0,
@@ -117,16 +119,18 @@ local function check_if_mummy_spawner_entity_exists(pos, self)
 end
 
 local spawner_DEF = {
-	hp_max = 1,
-	physical = false,
-	pointable = false,
-	visual = "mesh",
-	visual_size = {x=3.3,y=3.3},
-	mesh = mummy_mesh,
-	textures = mummy_texture,
-	makes_footstep_sound = false,
+	initial_properties = {
+		hp_max = 1,
+		physical = false,
+		pointable = false,
+		visual = "mesh",
+		visual_size = {x=3.3,y=3.3},
+		mesh = mummy_mesh,
+		textures = mummy_texture,
+		makes_footstep_sound = false,
+		automatic_rotate = math.pi * 2.9,
+	},
 	timer = 0,
-	automatic_rotate = math.pi * 2.9,
 }
 
 spawner_DEF.on_activate = function(self)
