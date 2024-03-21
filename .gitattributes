@@ -1,0 +1,5 @@
+# Improve language detection of repo by ignoring x files.
+*.x -linguist-detectable
+
+# Auto detect text files and perform LF normalization
+* text=auto
