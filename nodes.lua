@@ -49,10 +49,10 @@ local trap_on_timer = function(pos, elapsed)
 				end
 				if n.name == "tsm_pyramids:trap" then
 					minetest.set_node(pos, {name="tsm_pyramids:trap_2"})
-					minetest.check_for_falling(pos)
+					if minetest.check_for_falling ~= nil then minetest.check_for_falling(pos) else nodeupdate(pos) end
 				elseif n.name == "tsm_pyramids:desert_trap" then
 					minetest.set_node(pos, {name="tsm_pyramids:desert_trap_2"})
-					minetest.check_for_falling(pos)
+					if minetest.check_for_falling ~= nil then minetest.check_for_falling(pos) else nodeupdate(pos) end
 				end
 				return true
 			end
