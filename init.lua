@@ -92,7 +92,7 @@ function tsm_pyramids.fill_chest(pos, stype, flood_sand, treasure_chance)
 		-- Add treasures
 		if math.random(1,100) <= treasure_chance then
 			if minetest.get_modpath("treasurer") ~= nil then
-				stacks = treasurer.select_random_treasures(3,1,5,{"armes", "armures", "precieux", "nourriture"})
+				stacks = treasurer.select_random_treasures(3,1,5,{"minetool", "food", "crafting_component"})
 			else
 				for i=0,2,1 do
 					local stuff = chest_stuff.normal[math.random(1,#chest_stuff.normal)]
