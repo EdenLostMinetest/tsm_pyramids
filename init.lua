@@ -67,13 +67,16 @@ end
 
 function tsm_pyramids.fill_chest(pos, stype, flood_sand, treasure_chance)
 	local sand = "default:sand"
+	local n = minetest.get_node(pos)
+	local meta = minetest.get_meta(pos)
 	if not treasure_chance then
 		treasure_chance = 100
 	end
-	if stype == "desert_sandstone" or stype == "desert_stone" then
+	if meta:get_string("tsm_pyramids:stype") == "desert_sandstone" or
+		meta:get_string("tsm_pyramids:stype") == "desert_stone" or
+	stype == "desert_sandstone" or stype == "desert_stone" then
 		sand = "default:desert_sand"
 	end
-	local n = minetest.get_node(pos)
 	local treasure_added = false
 	if n and n.name and n.name == "default:chest" then
 		local meta = minetest.get_meta(pos)
@@ -81,13 +84,13 @@ function tsm_pyramids.fill_chest(pos, stype, flood_sand, treasure_chance)
 		inv:set_size("main", 8*4)
 		local stacks = {}
 		-- Fill with sand in sand-flooded pyramids
-		if flood_sand then
+		if meta:get_int("tsm_pyramids:sanded") == 1 or flood_sand then
 			table.insert(stacks, {name=sand, count = math.random(1,32)})
 		end
 		-- Add treasures
 		if math.random(1,100) <= treasure_chance then
 			if minetest.get_modpath("treasurer") ~= nil then
-				stacks = treasurer.select_random_treasures(3,7,9,{"minetool", "food", "crafting_component"})
+				stacks = treasurer.select_random_treasures(3,1,5,{"armes", "armures", "precieux", "nourriture"})
 			else
 				for i=0,2,1 do
 					local stuff = chest_stuff.normal[math.random(1,#chest_stuff.normal)]

@@ -960,6 +960,7 @@ function tsm_pyramids.make_room(pos, stype, room_id, rotations)
 		end
 		tries = tries + 1
 	end
+	local sanded = room.flood_sand ~= false and stype ~= "desert_stone" and math.random(1,8) == 1
 	local chests = {}
 	local column_style
 	if stype == "desert_stone" then
@@ -1002,6 +1003,13 @@ function tsm_pyramids.make_room(pos, stype, room_id, rotations)
 					local nn = replace(n_str, iy, code_table, deco, column_style)
 					minetest.set_node(cpos, {name=nn, param2=p2})
 					if nn == "default:chest" then
+						local meta = minetest.get_meta(cpos)
+						meta:set_string("tsm_pyramids:stype", stype)
+						if sanded then
+							meta:set_int("tsm_pyramids:sanded", 1)
+						else
+							meta:set_int("tsm_pyramids:sanded", 0)
+						end
 						table.insert(chests, cpos)
 					end
 				end
@@ -1045,6 +1053,13 @@ function tsm_pyramids.make_room(pos, stype, room_id, rotations)
 					local nn = code_table[n_str]
 					minetest.set_node(cpos, {name=nn, param2=p2})
 					if nn == "default:chest" then
+						local meta = minetest.get_meta(cpos)
+						meta:set_string("tsm_pyramids:stype", stype)
+						if sanded then
+							meta:set_int("tsm_pyramids:sanded", 1)
+						else
+							meta:set_int("tsm_pyramids:sanded", 0)
+						end
 						table.insert(chests, cpos)
 					end
 				end
@@ -1053,7 +1068,6 @@ function tsm_pyramids.make_room(pos, stype, room_id, rotations)
 	else
 		minetest.log("error", "Invalid pyramid room style! room type ID="..r)
 	end
-	local sanded = room.flood_sand ~= false and stype ~= "desert_stone" and math.random(1,8) == 1
 	if #chests > 0 then
 		-- Make at least 8 attempts to fill chests
 		local filled = 0
