@@ -1,4 +1,26 @@
-local S = minetest.get_translator("tsm_pyramids")
+local modpath = minetest.get_current_modname() or "tsm_pyramids"
+
+-- support for i18n
+local S
+-- Intllib or native translator
+if minetest.get_translator ~= nil then
+	S = minetest.get_translator(modpath)
+else
+	if minetest.get_modpath("intllib") then
+		dofile(minetest.get_modpath("intllib") .. "/init.lua")
+		if intllib.make_gettext_pair then
+			gettext, ngettext = intllib.make_gettext_pair() -- new gettext method
+		else
+			gettext = intllib.Getter() -- old text file method
+		end
+		S = gettext
+	else -- boilerplate function
+		S = function(str, ...)
+			local args = {...}
+			return str:gsub("@%d+", function(match) return args[tonumber(match:sub(2))] end)
+		end
+	end
+end
 
 -- Pyramid width (must be an odd number)
 local PYRA_W = 23
@@ -10,12 +32,17 @@ local PYRA_Wh = PYRA_Wm / 2
 local PYRA_MIN_Y = 1
 -- Maximun spawn height
 local PYRA_MAX_Y = 1000
+-- minetest 5.x check
+local is_50 = minetest.has_feature("object_use_texture_alpha")
 
 tsm_pyramids = {}
+tsm_pyramids.is_50 = is_50
+tsm_pyramids.S = S
+tsm_pyramids.perlin1 -- perlin noise buffer, make it global cos we need to acess in 5.0 after load all the rest of mods
 
-dofile(minetest.get_modpath("tsm_pyramids").."/mummy.lua")
-dofile(minetest.get_modpath("tsm_pyramids").."/nodes.lua")
-dofile(minetest.get_modpath("tsm_pyramids").."/room.lua")
+dofile(minetest.get_modpath(modpath).."/mummy.lua")
+dofile(minetest.get_modpath(modpath).."/nodes.lua")
+dofile(minetest.get_modpath(modpath).."/room.lua")
 
 local mg_name = minetest.get_mapgen_setting("mg_name")
 
@@ -243,8 +270,6 @@ local function make(pos, brick, sandstone, stone, sand, ptype, room_id)
 end
 
 local perl1
-local perlin1 -- perlin noise buffer
-
 -- if mg v6 set this   {SEED1 = 9130, OCTA1 = 3,	PERS1 = 0.5, SCAL1 = 250} -- Values should match minetest mapgen V6 desert noise.
 perl1 = { SEED1 = 9130, OCTA1 = 1, PERS1 = 0.5, SCAL1 =  25 } -- Values should match minetest mapgen V7 desert noise.
 
@@ -324,9 +349,6 @@ minetest.register_on_generated(function(minp, maxp, seed)
 	-- TODO: Use Minetests pseudo-random tools
 	math.randomseed(seed)
 
-	if not perlin1 then
-		perlin1 = minetest.get_perlin(perl1.SEED1, perl1.OCTA1, perl1.PERS1, perl1.SCAL1)
-	end
 	--[[ Make sure the pyramid doesn't bleed outside of maxp,
 	so it doesn't get placed incompletely by the mapgen.
 	This creates a bias somewhat, as this means there are some coordinates in
@@ -338,7 +360,15 @@ minetest.register_on_generated(function(minp, maxp, seed)
 		pos.z = math.min(pos.z, maxp.z - PYRA_W+1)
 		return pos
 	end
-	local noise1 = perlin1:get_2d({x=minp.x,y=minp.y})
+
+	if tsm_pyramids.perlin1 == nil then 
+		tsm_pyramids.perlin1 = minetest.get_perlin(perl1.SEED1, perl1.OCTA1, perl1.PERS1, perl1.SCAL1)
+	end
+	local noise1 = tsm_pyramids.perlin1:get_2d({x=minp.x,y=minp.y})
+	if noise1 == nil then 
+		minetest.log("warning", "[tsm_pyramids] canot get 2d noise from perlin buffer---------------------------- ")
+		return
+	end
 
 	if noise1 > 0.25 or noise1 < -0.26 then
 		-- Need a bit of luck to place a pyramid

@@ -1,4 +1,4 @@
-local S = minetest.get_translator("tsm_pyramids")
+local S = tsm_pyramids.S
 
 local mod_cmi = minetest.get_modpath("cmi") ~= nil
 
