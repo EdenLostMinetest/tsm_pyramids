@@ -101,17 +101,36 @@ local MUMMY_DEF = {
 }
 
 -- Returns true if a mummy spawner entity was found at pos.
--- If self is provided, this object does not count.
+-- If self is provided, upstream pointed that is not count but must be checked if are the same
 local function check_if_mummy_spawner_entity_exists(pos, self)
 	local ents = minetest.get_objects_inside_radius(pos, 0.5)
+	if not ents then return false end
 	for e=1, #ents do
-		if (not self) or (ents[e] ~= ents[e]) then
-			local lua = ents[e]:get_luaentity()
-			if lua then
-				if lua.name == "tsm_pyramids:mummy_spawner" then
-					-- entity found
-					return true
+		local objent = ents[e]
+		local lua = objent:get_luaentity()
+		if self then
+			if objent ~= self.object then
+				local sobj = self.object:get_luaentity()
+				if sobj.name then
+					if sobj.name == "tsm_pyramids:mummy_spawner" then return true end
+					if sobj.name == "mummy_spawner" then return true end
+				else
+					return false -- BUG could be a mob spawner but cannot get the name?
 				end
+			else
+				return false -- same object, is duplicate cos "self" is provided!
+			end
+		else
+			if type(lua) ~= "userdata" then -- not a player could be a spawner or a node
+				if lua then
+					-- entity found
+					if lua.name then
+						if lua.name == "tsm_pyramids:mummy_spawner" then return true end
+						if lua.name == "mummy_spawner" then return true end
+					end
+				end
+			else
+				return false
 			end
 		end
 	end
