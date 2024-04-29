@@ -34,9 +34,12 @@ local PYRA_MIN_Y = 1
 local PYRA_MAX_Y = 1000
 -- minetest 5.x check
 local is_50 = minetest.has_feature("object_use_texture_alpha")
+-- minetest 5.5 check
+local is_54 = minetest.has_feature("use_texture_alpha_string_modes") or nil
 
 tsm_pyramids = {}
 tsm_pyramids.is_50 = is_50
+tsm_pyramids.is_54 = is_54
 tsm_pyramids.S = S
 tsm_pyramids.perlin1 = nil -- perlin noise buffer, make it global cos we need to acess in 5.0 after load all the rest of mods
 
@@ -220,6 +223,17 @@ local function make_entrance(pos, rot, brick, sand, flood_sand)
 	end
 end
 
+local wa_bulk_set_node
+if not minetest.bulk_set_node then
+	wa_bulk_set_node = function(poslist, nodename)
+		for _, pos in ipairs(poslist) do
+			minetest.set_node(pos, nodename)
+		end
+	end
+else
+	wa_bulk_set_node = minetest.bulk_set_node
+end
+
 local function make_pyramid(pos, brick, sandstone, stone, sand)
 	local set_to_brick = {}
 	local set_to_stone = {}
@@ -234,8 +248,8 @@ local function make_pyramid(pos, brick, sandstone, stone, sand)
 			end
 		end
 	end
-	minetest.bulk_set_node(set_to_stone , {name=stone})
-	minetest.bulk_set_node(set_to_brick, {name=brick})
+	wa_bulk_set_node(set_to_stone, {name=stone})
+	wa_bulk_set_node(set_to_brick, {name=brick})
 end
 
 local function make(pos, brick, sandstone, stone, sand, ptype, room_id)

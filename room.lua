@@ -1183,6 +1183,10 @@ function tsm_pyramids.flood_sand(pos, stype)
 			end
 		end
 	end
-	minetest.bulk_set_node(set_to_sand, {name=nn})
+	if tsm_pyramids.is_54 then 
+		minetest.bulk_set_node(set_to_sand, {name=nn})
+	else
+		for _, xpos in ipairs(set_to_sand) do minetest.set_node(xpos, {name=nn}) end
+	end
 end
 
