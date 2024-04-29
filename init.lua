@@ -36,6 +36,10 @@ local PYRA_MAX_Y = 1000
 local is_50 = minetest.has_feature("object_use_texture_alpha")
 -- minetest 5.5 check
 local is_54 = minetest.has_feature("use_texture_alpha_string_modes") or nil
+-- get mapgen cos perlin noise must match mapgen choice and nodes
+local mgname = minetest.get_mapgen_setting("mg_name") or "v7"
+-- also perlin noise must be in sync for simplev7 mod
+local mgsimp = minetest.get_modpath("simplev7") or nil
 
 tsm_pyramids = {}
 tsm_pyramids.is_50 = is_50
@@ -283,10 +287,14 @@ local function make(pos, brick, sandstone, stone, sand, ptype, room_id)
 	return ok, msg
 end
 
-local perl1
--- if mg v6 set this   {SEED1 = 9130, OCTA1 = 3,       PERS1 = 0.5, SCAL1 = 250} -- Values should match minetest mapgen V6 desert noise.
-perl1 = { SEED1 = 9130, OCTA1 = 1, PERS1 = 0.5, SCAL1 =  25 } -- Values should match minetest mapgen V7 desert noise.
+local perl1 -- perlin noise / it depends of the mapgen, upstream do not set property
 
+if mgname == "v6" then perl1 = {SEED1 = 9130, OCTA1 = 3, PERS1 = 0.5, SCAL1 = 250} end -- Values should match minetest mapgen V6 desert noise.
+if mgname == "v7p" then perl1 = {SEED1 = 9130, OCTA1 = 1, PERS1 = 0.5, SCAL1 =  25} end -- The multicraft v7plus desert noise are not knowwed.
+if mgname == "v7" then perl1 = {SEED1 = 9130, OCTA1 = 1, PERS1 = 0.5, SCAL1 =  25} end -- Values should match minetest mapgen V7 desert noise.
+if mgsimp ~= nil then perl1 = {SEED1 = 5349, OCTA1 = 3, PERS1 = 0.7, SCAL1 = 500} end -- must match to find some desert sand
+
+-- get_perlin can only call it after the environment is created so wrap code for older engines into minetest.after(0, ...) and only call it once
 if tsm_pyramids.is_50 then
 	tsm_pyramids.perlin1 = minetest.get_perlin(perl1.SEED1, perl1.OCTA1, perl1.PERS1, perl1.SCAL1)
 else
