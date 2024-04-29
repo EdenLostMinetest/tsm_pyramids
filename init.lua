@@ -38,7 +38,7 @@ local is_50 = minetest.has_feature("object_use_texture_alpha")
 tsm_pyramids = {}
 tsm_pyramids.is_50 = is_50
 tsm_pyramids.S = S
-tsm_pyramids.perlin1 -- perlin noise buffer, make it global cos we need to acess in 5.0 after load all the rest of mods
+tsm_pyramids.perlin1 = nil -- perlin noise buffer, make it global cos we need to acess in 5.0 after load all the rest of mods
 
 dofile(minetest.get_modpath(modpath).."/mummy.lua")
 dofile(minetest.get_modpath(modpath).."/nodes.lua")
@@ -270,8 +270,14 @@ local function make(pos, brick, sandstone, stone, sand, ptype, room_id)
 end
 
 local perl1
--- if mg v6 set this   {SEED1 = 9130, OCTA1 = 3,	PERS1 = 0.5, SCAL1 = 250} -- Values should match minetest mapgen V6 desert noise.
+-- if mg v6 set this   {SEED1 = 9130, OCTA1 = 3,       PERS1 = 0.5, SCAL1 = 250} -- Values should match minetest mapgen V6 desert noise.
 perl1 = { SEED1 = 9130, OCTA1 = 1, PERS1 = 0.5, SCAL1 =  25 } -- Values should match minetest mapgen V7 desert noise.
+
+if tsm_pyramids.is_50 then
+	tsm_pyramids.perlin1 = minetest.get_perlin(perl1.SEED1, perl1.OCTA1, perl1.PERS1, perl1.SCAL1)
+else
+	tsm_pyramids.perlin1 = PerlinNoise(perl1.SEED1, perl1.OCTA1, perl1.PERS1, perl1.SCAL1)
+end
 
 local function hlp_fnct(pos, name)
 	local n = minetest.get_node_or_nil(pos)
@@ -281,6 +287,7 @@ local function hlp_fnct(pos, name)
 		return false
 	end
 end
+
 local function ground(pos, old)
 	local p2 = table.copy(pos)
 	while hlp_fnct(p2, "air") do
@@ -361,12 +368,18 @@ minetest.register_on_generated(function(minp, maxp, seed)
 		return pos
 	end
 
-	if tsm_pyramids.perlin1 == nil then 
-		tsm_pyramids.perlin1 = minetest.get_perlin(perl1.SEED1, perl1.OCTA1, perl1.PERS1, perl1.SCAL1)
+	local noise1 = nil
+	if not tsm_pyramids.perlin1 or tsm_pyramids.perlin1 == nil then
+		if tsm_pyramids.is_50 then
+			tsm_pyramids.perlin1 = minetest.get_perlin(perl1.SEED1, perl1.OCTA1, perl1.PERS1, perl1.SCAL1)
+			noise1 = tsm_pyramids.perlin1:get_2d({x=minp.x,y=minp.y})
+		else
+			tsm_pyramids.perlin1 = PerlinNoise(perl1.SEED1, perl1.OCTA1, perl1.PERS1, perl1.SCAL1)
+			noise1 = tsm_pyramids.perlin1:get2d({x=minp.x,y=minp.y})
+		end
 	end
-	local noise1 = tsm_pyramids.perlin1:get_2d({x=minp.x,y=minp.y})
-	if noise1 == nil then 
-		minetest.log("warning", "[tsm_pyramids] canot get 2d noise from perlin buffer---------------------------- ")
+
+	if not tsm_pyramids.perlin1 or tsm_pyramids.perlin1 == nil or not noise1 or noise1 == nil then
 		return
 	end
 
