@@ -1,5 +1,7 @@
 local S = minetest.get_translator("tsm_pyramids")
 
+local mod_cmi = minetest.get_modpath("cmi") ~= nil
+
 local mummy_walk_limit = 1
 local mummy_chillaxin_speed = 1
 local mummy_animation_speed = 10
@@ -16,7 +18,7 @@ local sound_normal = "mummy"
 local sound_hit = "mummy_hurt"
 local sound_dead = "mummy_death"
 
-local spawner_range = 17
+local spawner_check_range = 17
 local spawner_max_mobs = 6
 
 local function get_animations()
@@ -47,15 +49,11 @@ local ANIM_WALK_MINE = 5
 local ANIM_MINE = 6
 
 local function hit(self)
-	local prop = {
-		mesh = mummy_mesh,
-		textures = {"tsm_pyramids_mummy.png^tsm_pyramids_hit.png"},
-	}
-	self.object:set_properties(prop)
+	self.object:set_texture_mod("^tsm_pyramids_hit.png")
 	minetest.after(0.4, function(self)
 		local prop = {textures = mummy_texture,}
-		if self.object ~= nil then
-			self.object:set_properties(prop)
+		if self ~= nil and self.object ~= nil then
+			self.object:set_texture_mod("")
 		end
 	end, self)
 end
@@ -63,13 +61,13 @@ end
 local function mummy_update_visuals_def(self)
 	npc_anim = 0 -- Animation will be set further below immediately
 	local prop = {
-		mesh = mummy_mesh,
 		textures = mummy_texture,
 	}
 	self.object:set_properties(prop)
 end
 
 local MUMMY_DEF = {
+	hp_max = mummy_hp,
 	physical = true,
 	collisionbox = {-0.4, -0.01, -0.4, 0.4, 1.9, 0.4},
 	visual = "mesh",
@@ -90,13 +88,18 @@ local MUMMY_DEF = {
 	envdmg_timer = 0,
 	attacker = "",
 	attacking_timer = 0,
-	mob_name = "mummy"
+
+	-- CMI stuff
+	-- Track last cause of damage for cmi.notify_die
+	last_damage_cause = { type = "unknown" },
+	_cmi_is_mob = true,
+	description = S("Mummy"),
 }
 
 local spawner_DEF = {
 	hp_max = 1,
-	physical = true,
-	collisionbox = {0,0,0,0,0,0},
+	physical = false,
+	pointable = false,
 	visual = "mesh",
 	visual_size = {x=3.3,y=3.3},
 	mesh = mummy_mesh,
@@ -104,7 +107,6 @@ local spawner_DEF = {
 	makes_footstep_sound = false,
 	timer = 0,
 	automatic_rotate = math.pi * 2.9,
-	m_name = "dummy"
 }
 
 spawner_DEF.on_activate = function(self)
@@ -121,6 +123,7 @@ spawner_DEF.on_step = function(self, dtime)
 	if self.timer > 1 then
 		if n and n.name and n.name ~= "tsm_pyramids:spawner_mummy" then
 			self.object:remove()
+			return
 		end
 	end
 end
@@ -129,25 +132,33 @@ spawner_DEF.on_punch = function(self, hitter)
 
 end
 
-MUMMY_DEF.on_activate = function(self)
+MUMMY_DEF.on_activate = function(self, staticdata, dtime_s)
+	if mod_cmi then
+		cmi.notify_activate(self, dtime_s)
+	end
 	mummy_update_visuals_def(self)
 	self.anim = get_animations()
 	self.object:set_animation({x=self.anim.stand_START,y=self.anim.stand_END}, mummy_animation_speed, mummy_animation_blend)
 	self.npc_anim = ANIM_STAND
 	self.object:set_acceleration({x=0,y=-20,z=0})--20
 	self.state = 1
-	self.object:set_hp(mummy_hp)
 	self.object:set_armor_groups({fleshy=130})
 end
 
-MUMMY_DEF.on_punch = function(self, puncher, time_from_last_punch, tool_capabilities, dir)
-
+MUMMY_DEF.on_punch = function(self, puncher, time_from_last_punch, tool_capabilities, dir, damage)
+	if mod_cmi then
+		cmi.notify_punch(self, puncher, time_from_last_punch, tool_capabilities, dir, damage)
+	end
 	self.attacker = puncher
 
+	if damage > 0 then
+		self.last_damage = {
+			type = "punch",
+			puncher = puncher,
+		}
+	end
 	if puncher ~= nil then
-		local sound = sound_hit
-		if self.object:get_hp() == 0 then sound = sound_dead end
-		minetest.sound_play(sound, {to_player = puncher:get_player_name(), loop = false, gain = 0.3})
+		minetest.sound_play(sound_hit, {pos = self.object:get_pos(), loop = false, max_hear_distance = 10, gain = 0.4}, true)
 		if time_from_last_punch >= 0.45 then
 			hit(self)
 			self.direction = {x=self.object:get_velocity().x, y=self.object:get_velocity().y, z=self.object:get_velocity().z}
@@ -160,16 +171,26 @@ MUMMY_DEF.on_punch = function(self, puncher, time_from_last_punch, tool_capabili
 			end
 		end
 	end
+end
 
-	if self.object:get_hp() == 0 then
-	    local obj = minetest.add_item(self.object:get_pos(), mummy_drop.." "..math.random(0,3))
+MUMMY_DEF.on_death = function(self, killer)
+	minetest.sound_play(sound_dead, {pos = self.object:get_pos(), max_hear_distance = 10 , gain = 0.3}, true)
+	-- Drop item on death
+	local count = math.random(0,3)
+	if count > 0 then
+		local pos = self.object:get_pos()
+		pos.y = pos.y + 1.0
+		minetest.add_item(pos, mummy_drop .. " " .. count)
+	end
+	if mod_cmi then
+		cmi.notify_die(self, self.last_damage)
 	end
 end
 
-	local cnt1 = 0
-	local cnt2 = 0
-
 MUMMY_DEF.on_step = function(self, dtime)
+	if mod_cmi then
+		cmi.notify_step(self, dtime)
+	end
 	self.timer = self.timer + 0.01
 	self.turn_timer = self.turn_timer + 0.01
 	self.jump_timer = self.jump_timer + 0.01
@@ -183,13 +204,11 @@ MUMMY_DEF.on_step = function(self, dtime)
 		self.time_passed = 0
 	end
 
-	if self.object:get_hp() == 0 then
-		minetest.sound_play(sound_dead, {pos = current_pos, max_hear_distance = 10 , gain = 0.3})
-		self.object:remove()
-	end
+	-- Environment damage
 	local def = minetest.registered_nodes[current_node.name]
 	local dps = def.damage_per_second
 	local dmg = 0
+	local dmg_node, dmg_pos
 	if dps ~= nil and dps > 0 then
 		dmg = dps
 	end
@@ -211,9 +230,22 @@ MUMMY_DEF.on_step = function(self, dtime)
 		if self.envdmg_timer >= 1 then
 			self.envdmg_timer = 0
 			self.object:set_hp(self.object:get_hp()-dmg)
-			hit(self)
-			self.sound_timer = 0
-			minetest.sound_play(sound_hit, {pos = current_pos, max_hear_distance = 10, gain = 0.3})
+			self.last_damage = {
+				type = "environment",
+				pos = current_pos,
+				node = current_node,
+			}
+			if self.object:get_hp() <= 0 then
+				if self.on_death then
+					self.on_death(self)
+				end
+				self.object:remove()
+				return
+			else
+				hit(self)
+				self.sound_timer = 0
+				minetest.sound_play(sound_hit, {pos = current_pos, max_hear_distance = 10, gain = 0.4}, true)
+			end
 		end
 	 else
 		self.time_passed = 0
@@ -231,7 +263,7 @@ MUMMY_DEF.on_step = function(self, dtime)
 
 	--play sound
 	if self.sound_timer > math.random(5,35) then
-		minetest.sound_play(sound_normal, {pos = current_pos, max_hear_distance = 10, gain = 0.2})
+		minetest.sound_play(sound_normal, {pos = current_pos, max_hear_distance = 10, gain = 0.2}, true)
 		self.sound_timer = 0
 	end
 
@@ -335,16 +367,29 @@ minetest.register_craftitem("tsm_pyramids:spawn_egg", {
 	liquids_pointable = false,
 	stack_max = 99,
 	on_place = function(itemstack, placer, pointed_thing)
-		if pointed_thing.type == "node" then
-			minetest.add_entity(pointed_thing.above,"tsm_pyramids:mummy")
-			if not minetest.settings:get_bool("creative_mode") then itemstack:take_item() end
+		if pointed_thing.type ~= "node" then
 			return itemstack
 		end
+
+		-- am I clicking on something with existing on_rightclick function?
+		local node = minetest.get_node(pointed_thing.under)
+		if placer and not placer:get_player_control().sneak then
+			if minetest.registered_nodes[node.name] and minetest.registered_nodes[node.name].on_rightclick then
+				return minetest.registered_nodes[node.name].on_rightclick(pointed_thing.under, node, placer, itemstack) or itemstack
+			end
+		end
+
+		minetest.add_entity(pointed_thing.above,"tsm_pyramids:mummy")
+		if not minetest.settings:get_bool("creative_mode") then
+			itemstack:take_item()
+		end
+		return itemstack
 	end,
 
 })
 
-function tsm_pyramids.spawn_mummy (pos, number)
+-- Spawn a mummy at position
+function tsm_pyramids.spawn_mummy_at(pos, number)
 	local node = minetest.get_node(pos)
 	if node.name ~= "air" then
 		return
@@ -377,7 +422,7 @@ minetest.register_node("tsm_pyramids:spawner_mummy", {
 	on_destruct = function(pos)
 		for  _,obj in ipairs(minetest.get_objects_inside_radius(pos, 1)) do
 			if not obj:is_player() then 
-				if obj ~= nil and obj:get_luaentity().m_name == "dummy" then
+				if obj ~= nil and obj:get_luaentity().name == "tsm_pyramids:mummy_spawner" then
 					obj:remove()	
 				end
 			end
@@ -385,35 +430,80 @@ minetest.register_node("tsm_pyramids:spawner_mummy", {
 	end,
 	sounds = spawnersounds,
 })
+
+-- Attempt to spawn a mummy at a random appropriate position around pos.
+-- Criteria:
+-- * Must be close to pos
+-- * Not in sunlight
+-- * Must be air on top of a non-air block
+-- * No more than 6 mummies in area
+-- * Player must be near is player_near_required is true
+function tsm_pyramids.attempt_mummy_spawn(pos, player_near_required)
+	local player_near = false
+	local mobs = 0
+	for  _,obj in ipairs(minetest.get_objects_inside_radius(pos, spawner_check_range)) do
+		if obj:is_player() then
+			player_near = true
+		else
+			if obj:get_luaentity() and obj:get_luaentity().name == "tsm_pyramids:mummy" then
+				mobs = mobs + 1
+			end
+		end
+	end
+	if player_near or (not player_near_required) then
+		if mobs < spawner_max_mobs then
+			local offset = {x=5,y=2,z=5}
+			local nposses = minetest.find_nodes_in_area(vector.subtract(pos, offset), vector.add(pos,offset), "air")
+			local tries = math.min(6, #nposses)
+			for i=1, tries do
+				local r = math.random(1, #nposses)
+				local npos = nposses[r]
+				-- Check if mummy has 2 nodes of free space
+				local two_space = false
+				-- Check if mummy has something to walk on
+				local footing = false
+				-- Find the lowest node
+				for y=-1, -5, -1 do
+					npos.y = npos.y - 1
+					local below = minetest.get_node(npos)
+					if minetest.registered_items[below.name].liquidtype ~= "none" then
+						break
+					end
+					if below.name ~= "air" then
+						if y < -1 then
+							two_space = true
+						end
+						npos.y = npos.y + 1
+						footing = true
+						break
+					end
+				end
+				local light = minetest.get_node_light(npos, 0.5)
+				if not two_space then
+					local above = minetest.get_node({x=npos.x, y=npos.y+1, z=npos.z})
+					if above.name == "air" then
+						two_space = true
+					end
+				end
+				if footing and two_space and light < 15 then
+					tsm_pyramids.spawn_mummy_at(npos, 1)
+					break
+				else
+					table.remove(nposses, r)
+				end
+			end
+		end
+	end
+end
+
 if not minetest.settings:get_bool("only_peaceful_mobs") then
 	minetest.register_abm({
 		nodenames = {"tsm_pyramids:spawner_mummy"},
 		interval = 2.0,
 		chance = 20,
 		action = function(pos, node, active_object_count, active_object_count_wider)
-			local player_near = false
-			local mobs = 0
-			for  _,obj in ipairs(minetest.get_objects_inside_radius(pos, spawner_range)) do
-				if obj:is_player() then
-					player_near = true
-				else
-					if obj:get_luaentity() and obj:get_luaentity().mob_name == "mummy" then
-						mobs = mobs + 1
-					end
-				end
-			end
-			if player_near then
-				if mobs < spawner_max_mobs then
-					pos.x = pos.x+1
-					local p = minetest.find_node_near(pos, 5, {"air"})
-					local p2 = {x=pos.x, y=pos.y+1, z=pos.z}
-					local n2 = minetest.get_node(p2)
-					if n2.name == "air" then
-						tsm_pyramids.spawn_mummy(p, 1)
-					end
-				end
-			end
-		end
+			tsm_pyramids.attempt_mummy_spawn(pos, true)
+		end,
 	})
 end
 

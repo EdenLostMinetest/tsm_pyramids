@@ -6,6 +6,7 @@ Desert Sandstone with Cactus Engraving=
 Desert Sandstone with Scarab Engraving=
 Falling Cracked Sandstone Brick=
 Falling Cracked Desert Sandstone Brick=
+Mummy=
 Mummy Spawn Egg=
 Mummy Spawner=
 Sandstone with Eye Engraving=
