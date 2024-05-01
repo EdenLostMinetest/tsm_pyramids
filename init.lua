@@ -1,4 +1,26 @@
-local S = minetest.get_translator("tsm_pyramids")
+local modpath = minetest.get_current_modname() or "tsm_pyramids"
+
+-- support for i18n
+local S
+-- Intllib or native translator
+if minetest.get_translator ~= nil then
+	S = minetest.get_translator(modpath)
+else
+	if minetest.get_modpath("intllib") then
+		dofile(minetest.get_modpath("intllib") .. "/init.lua")
+		if intllib.make_gettext_pair then
+			gettext, ngettext = intllib.make_gettext_pair() -- new gettext method
+		else
+			gettext = intllib.Getter() -- old text file method
+		end
+		S = gettext
+	else -- boilerplate function
+		S = function(str, ...)
+			local args = {...}
+			return str:gsub("@%d+", function(match) return args[tonumber(match:sub(2))] end)
+		end
+	end
+end
 
 -- Pyramid width (must be an odd number)
 local PYRA_W = 23
@@ -7,13 +29,27 @@ local PYRA_Wm = PYRA_W - 1
 -- Half of (Pyramid width minus 1)
 local PYRA_Wh = PYRA_Wm / 2
 -- Minimum spawn height
-local PYRA_MIN_Y = 3
+local PYRA_MIN_Y = 1
+-- Maximun spawn height
+local PYRA_MAX_Y = 1000
+-- minetest 5.x check
+local is_50 = minetest.has_feature("object_use_texture_alpha")
+-- minetest 5.5 check
+local is_54 = minetest.has_feature("use_texture_alpha_string_modes") or nil
+-- get mapgen cos perlin noise must match mapgen choice and nodes
+local mgname = minetest.get_mapgen_setting("mg_name") or "v7"
+-- also perlin noise must be in sync for simplev7 mod
+local mgsimp = minetest.get_modpath("simplev7") or nil
 
 tsm_pyramids = {}
+tsm_pyramids.is_50 = is_50
+tsm_pyramids.is_54 = is_54
+tsm_pyramids.S = S
+tsm_pyramids.perlin1 = nil -- perlin noise buffer, make it global cos we need to acess in 5.0 after load all the rest of mods
 
-dofile(minetest.get_modpath("tsm_pyramids").."/mummy.lua")
-dofile(minetest.get_modpath("tsm_pyramids").."/nodes.lua")
-dofile(minetest.get_modpath("tsm_pyramids").."/room.lua")
+dofile(minetest.get_modpath(modpath).."/mummy.lua")
+dofile(minetest.get_modpath(modpath).."/nodes.lua")
+dofile(minetest.get_modpath(modpath).."/room.lua")
 
 local mg_name = minetest.get_mapgen_setting("mg_name")
 
@@ -73,13 +109,16 @@ end
 
 function tsm_pyramids.fill_chest(pos, stype, flood_sand, treasure_chance)
 	local sand = "default:sand"
+	local n = minetest.get_node(pos)
+	local meta = minetest.get_meta(pos)
 	if not treasure_chance then
 		treasure_chance = 100
 	end
-	if stype == "desert_sandstone" or stype == "desert_stone" then
+	if meta:get_string("tsm_pyramids:stype") == "desert_sandstone" or
+		meta:get_string("tsm_pyramids:stype") == "desert_stone" or
+	stype == "desert_sandstone" or stype == "desert_stone" then
 		sand = "default:desert_sand"
 	end
-	local n = minetest.get_node(pos)
 	local treasure_added = false
 	if n and n.name and n.name == "default:chest" then
 		local meta = minetest.get_meta(pos)
@@ -87,13 +126,13 @@ function tsm_pyramids.fill_chest(pos, stype, flood_sand, treasure_chance)
 		inv:set_size("main", 8*4)
 		local stacks = {}
 		-- Fill with sand in sand-flooded pyramids
-		if flood_sand then
+		if meta:get_int("tsm_pyramids:sanded") == 1 or flood_sand then
 			table.insert(stacks, {name=sand, count = math.random(1,32)})
 		end
 		-- Add treasures
 		if math.random(1,100) <= treasure_chance then
 			if minetest.get_modpath("treasurer") ~= nil then
-				stacks = treasurer.select_random_treasures(3,7,9,{"minetool", "food", "crafting_component"})
+				stacks = treasurer.select_random_treasures(3,1,5,{"minetool", "food", "crafting_component"})
 			else
 				for i=0,2,1 do
 					local stuff = chest_stuff.normal[math.random(1,#chest_stuff.normal)]
@@ -194,6 +233,17 @@ local function make_entrance(pos, rot, brick, sand, flood_sand)
 	end
 end
 
+local wa_bulk_set_node
+if not minetest.bulk_set_node then
+	wa_bulk_set_node = function(poslist, nodename)
+		for _, pos in ipairs(poslist) do
+			minetest.set_node(pos, nodename)
+		end
+	end
+else
+	wa_bulk_set_node = minetest.bulk_set_node
+end
+
 local function make_pyramid(pos, brick, sandstone, stone, sand)
 	local set_to_brick = {}
 	local set_to_stone = {}
@@ -208,8 +258,8 @@ local function make_pyramid(pos, brick, sandstone, stone, sand)
 			end
 		end
 	end
-	minetest.bulk_set_node(set_to_stone , {name=stone})
-	minetest.bulk_set_node(set_to_brick, {name=brick})
+	wa_bulk_set_node(set_to_stone, {name=stone})
+	wa_bulk_set_node(set_to_brick, {name=brick})
 end
 
 local function make(pos, brick, sandstone, stone, sand, ptype, room_id)
@@ -243,8 +293,19 @@ local function make(pos, brick, sandstone, stone, sand, ptype, room_id)
 	return ok, msg
 end
 
-local perl1 = {SEED1 = 9130, OCTA1 = 3,	PERS1 = 0.5, SCAL1 = 250} -- Values should match minetest mapgen V6 desert noise.
-local perlin1 -- perlin noise buffer
+local perl1 -- perlin noise / it depends of the mapgen, upstream do not set property
+
+if mgname == "v6" then perl1 = {SEED1 = 9130, OCTA1 = 3, PERS1 = 0.5, SCAL1 = 250} end -- Values should match minetest mapgen V6 desert noise.
+if mgname == "v7p" then perl1 = {SEED1 = 9130, OCTA1 = 1, PERS1 = 0.5, SCAL1 =  25} end -- The multicraft v7plus desert noise are not knowwed.
+if mgname == "v7" then perl1 = {SEED1 = 9130, OCTA1 = 1, PERS1 = 0.5, SCAL1 =  25} end -- Values should match minetest mapgen V7 desert noise.
+if mgsimp ~= nil then perl1 = {SEED1 = 5349, OCTA1 = 3, PERS1 = 0.7, SCAL1 = 500} end -- must match to find some desert sand
+
+-- get_perlin can only call it after the environment is created so wrap code for older engines into minetest.after(0, ...) and only call it once
+if tsm_pyramids.is_50 then
+	tsm_pyramids.perlin1 = minetest.get_perlin(perl1.SEED1, perl1.OCTA1, perl1.PERS1, perl1.SCAL1)
+else
+	tsm_pyramids.perlin1 = PerlinNoise(perl1.SEED1, perl1.OCTA1, perl1.PERS1, perl1.SCAL1)
+end
 
 local function hlp_fnct(pos, name)
 	local n = minetest.get_node_or_nil(pos)
@@ -254,6 +315,7 @@ local function hlp_fnct(pos, name)
 		return false
 	end
 end
+
 local function ground(pos, old)
 	local p2 = table.copy(pos)
 	while hlp_fnct(p2, "air") do
@@ -317,18 +379,15 @@ end
 -- Attempt to generate a pyramid in the generated area.
 -- Up to one pyramid per mapchunk.
 minetest.register_on_generated(function(minp, maxp, seed)
-	if maxp.y < PYRA_MIN_Y then return end
+	if maxp.y < PYRA_MIN_Y or maxp.y > PYRA_MAX_Y then return end
 
 	-- TODO: Use Minetests pseudo-random tools
 	math.randomseed(seed)
 
-	if not perlin1 then
-		perlin1 = minetest.get_perlin(perl1.SEED1, perl1.OCTA1, perl1.PERS1, perl1.SCAL1)
-	end
 	--[[ Make sure the pyramid doesn't bleed outside of maxp,
 	so it doesn't get placed incompletely by the mapgen.
 	This creates a bias somewhat, as this means there are some coordinates in
-        which pyramids cannot spawn. But it's still better to have broken pyramids.
+        which pyramids cannot spawn. But it's still better than to have broken pyramids.
 	]]
 	local limit = function(pos, maxp)
 		pos.x = math.min(pos.x, maxp.x - PYRA_W+1)
@@ -336,7 +395,21 @@ minetest.register_on_generated(function(minp, maxp, seed)
 		pos.z = math.min(pos.z, maxp.z - PYRA_W+1)
 		return pos
 	end
-	local noise1 = perlin1:get_2d({x=minp.x,y=minp.y})
+
+	local noise1 = nil
+	if not tsm_pyramids.perlin1 or tsm_pyramids.perlin1 == nil then
+		if tsm_pyramids.is_50 then
+			tsm_pyramids.perlin1 = minetest.get_perlin(perl1.SEED1, perl1.OCTA1, perl1.PERS1, perl1.SCAL1)
+			noise1 = tsm_pyramids.perlin1:get_2d({x=minp.x,y=minp.y})
+		else
+			tsm_pyramids.perlin1 = PerlinNoise(perl1.SEED1, perl1.OCTA1, perl1.PERS1, perl1.SCAL1)
+			noise1 = tsm_pyramids.perlin1:get2d({x=minp.x,y=minp.y})
+		end
+	end
+
+	if not tsm_pyramids.perlin1 or tsm_pyramids.perlin1 == nil or not noise1 or noise1 == nil then
+		return
+	end
 
 	if noise1 > 0.125 or noise1 < -0.125 then
 		-- Need a bit of luck to place a pyramid
@@ -351,8 +424,8 @@ minetest.register_on_generated(function(minp, maxp, seed)
 			minetest.log("verbose", "[tsm_pyramids] Pyramid not placed, no suitable surface. minp="..minetest.pos_to_string(minp))
 			return
 		end
-		if p2.y < PYRA_MIN_Y then
-			minetest.log("info", "[tsm_pyramids] Pyramid not placed, too deep. p2="..minetest.pos_to_string(p2))
+		if p2.y < PYRA_MIN_Y or p2.y > PYRA_MAX_Y then
+			minetest.log("info", "[tsm_pyramids] Pyramid not placed, too deep or too high. p2="..minetest.pos_to_string(p2))
 			return
 		end
 		-- Now sink the pyramid until each corner of it is no longer floating in mid-air

@@ -1,11 +1,11 @@
-local S = minetest.get_translator("tsm_pyramids")
+local S = tsm_pyramids.S
 
 local img = {
 	"eye", "men", "sun",
 	"ankh", "scarab", "cactus"
 }
 local desc = {
-	S("Sandstone with Eye Engraving"), S("Sandstone with Man Engraving"), S("Sandstone with Sun Engraving"),
+	S("Sandstone with Eye Engraving"), S("Sandstone with Human Engraving"), S("Sandstone with Sun Engraving"),
 	S("Desert Sandstone with Ankh Engraving"), S("Desert Sandstone with Scarab Engraving"), S("Desert Sandstone with Cactus Engraving")
 }
 
@@ -49,10 +49,10 @@ local trap_on_timer = function(pos, elapsed)
 				end
 				if n.name == "tsm_pyramids:trap" then
 					minetest.set_node(pos, {name="tsm_pyramids:trap_2"})
-					minetest.check_for_falling(pos)
+					if minetest.check_for_falling ~= nil then minetest.check_for_falling(pos) else nodeupdate(pos) end
 				elseif n.name == "tsm_pyramids:desert_trap" then
 					minetest.set_node(pos, {name="tsm_pyramids:desert_trap_2"})
-					minetest.check_for_falling(pos)
+					if minetest.check_for_falling ~= nil then minetest.check_for_falling(pos) else nodeupdate(pos) end
 				end
 				return true
 			end
@@ -97,3 +97,30 @@ register_trap_stone("desert_trap",
 	"default_desert_sandstone_brick.png",
 	{ items = { { items = { "default:desert_sand" }, rarity = 1 }, { items = { "default:desert_sand" }, rarity = 2 }, } })
 
+local chest = minetest.registered_nodes["default:chest"]
+local def_on_rightclick = chest.on_rightclick
+local def_on_timer = chest.on_timer
+minetest.override_item(
+	"default:chest",
+	{
+		on_rightclick = function(pos, node, clicker, itemstack, pointed_thing)
+			if minetest.get_meta(pos):get_string("tsm_pyramids:stype") ~= "" then
+				local timer = minetest.get_node_timer(pos)
+				if not timer:is_started() then
+					timer:start(1800) -- remplissages des coffres toutes les 30 minutes
+				end
+			end
+			return def_on_rightclick(pos, node, clicker, itemstack, pointed_thing)
+		end,
+		on_timer = function(pos, elapsed)
+			if minetest.get_meta(pos):get_string("tsm_pyramids:stype") ~= "" then
+				minetest.log("action", "[DEBUG] chest refilling")
+				tsm_pyramids.fill_chest(pos)
+				return false
+			else
+				if def_on_timer then return def_on_timer(pos, elapsed) else return false end
+			end
+		end,
+})
+
+minetest.register_alias("tsm_pyramids:chest", "default:chest")

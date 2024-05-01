@@ -1,4 +1,4 @@
-local S = minetest.get_translator("tsm_pyramids")
+local S = tsm_pyramids.S
 
 local mod_cmi = minetest.get_modpath("cmi") ~= nil
 
@@ -13,6 +13,8 @@ local mummy_mesh = "tsm_pyramids_mummy.x"
 local mummy_texture = {"tsm_pyramids_mummy.png"}
 local mummy_hp = 20
 local mummy_drop = "default:papyrus"
+
+local spawner_entity_offset = -0.28
 
 local sound_normal = "mummy"
 local sound_hit = "mummy_hurt"
@@ -67,14 +69,16 @@ local function mummy_update_visuals_def(self)
 end
 
 local MUMMY_DEF = {
-	hp_max = mummy_hp,
-	physical = true,
-	collisionbox = {-0.4, -0.01, -0.4, 0.4, 1.9, 0.4},
-	visual = "mesh",
-	visual_size = {x=8,y=8},
-	mesh = mummy_mesh,
-	textures = mummy_texture,
-	makes_footstep_sound = true,
+	initial_properties = {
+		hp_max = mummy_hp,
+		physical = true,
+		collisionbox = {-0.4, -0.01, -0.4, 0.4, 1.9, 0.4},
+		visual = "mesh",
+		visual_size = {x=8,y=8},
+		mesh = mummy_mesh,
+		textures = mummy_texture,
+		makes_footstep_sound = true,
+	},
 	npc_anim = 0,
 	timer = 0,
 	turn_timer = 0,
@@ -96,20 +100,66 @@ local MUMMY_DEF = {
 	description = S("Mummy"),
 }
 
+-- Returns true if a mummy spawner entity was found at pos.
+-- If self is provided, upstream pointed that is not count but must be checked if are the same
+local function check_if_mummy_spawner_entity_exists(pos, self)
+	local ents = minetest.get_objects_inside_radius(pos, 0.5)
+	if not ents then return false end
+	for e=1, #ents do
+		local objent = ents[e]
+		local lua = objent:get_luaentity()
+		if self then
+			if objent ~= self.object then
+				local sobj = self.object:get_luaentity()
+				if sobj.name then
+					if sobj.name == "tsm_pyramids:mummy_spawner" then return true end
+					if sobj.name == "mummy_spawner" then return true end
+				else
+					return false -- BUG could be a mob spawner but cannot get the name?
+				end
+			else
+				return false -- same object, is duplicate cos "self" is provided!
+			end
+		else
+			if type(lua) ~= "userdata" then -- not a player could be a spawner or a node
+				if lua then
+					-- entity found
+					if lua.name then
+						if lua.name == "tsm_pyramids:mummy_spawner" then return true end
+						if lua.name == "mummy_spawner" then return true end
+					end
+				end
+			else
+				return false
+			end
+		end
+	end
+	return false
+end
+
 local spawner_DEF = {
-	hp_max = 1,
-	physical = false,
-	pointable = false,
-	visual = "mesh",
-	visual_size = {x=3.3,y=3.3},
-	mesh = mummy_mesh,
-	textures = mummy_texture,
-	makes_footstep_sound = false,
+	initial_properties = {
+		hp_max = 1,
+		physical = false,
+		pointable = false,
+		visual = "mesh",
+		visual_size = {x=3.3,y=3.3},
+		mesh = mummy_mesh,
+		textures = mummy_texture,
+		makes_footstep_sound = false,
+		automatic_rotate = math.pi * 2.9,
+	},
 	timer = 0,
-	automatic_rotate = math.pi * 2.9,
 }
 
 spawner_DEF.on_activate = function(self)
+	local pos = self.object:get_pos()
+	local spos = vector.new(pos.x, pos.y + spawner_entity_offset, pos.z)
+	if check_if_mummy_spawner_entity_exists(spos, self) then
+		-- Remove possible duplicate entity
+		self.object:remove()
+		return
+	end
 	mummy_update_visuals_def(self)
 	self.object:set_velocity({x=0, y=0, z=0})
 	self.object:set_acceleration({x=0, y=0, z=0})
@@ -117,14 +167,18 @@ spawner_DEF.on_activate = function(self)
 
 end
 
+-- Regularily check if entity is still inside spawner
 spawner_DEF.on_step = function(self, dtime)
-	self.timer = self.timer + 0.01
-	local n = minetest.get_node_or_nil(self.object:get_pos())
-	if self.timer > 1 then
+	self.timer = self.timer + dtime
+	local pos = self.object:get_pos()
+	pos.y = pos.y - spawner_entity_offset
+	local n = minetest.get_node_or_nil(pos)
+	if self.timer > 50 then
 		if n and n.name and n.name ~= "tsm_pyramids:spawner_mummy" then
 			self.object:remove()
 			return
 		end
+		self.timer = 0
 	end
 end
 
@@ -151,7 +205,7 @@ MUMMY_DEF.on_punch = function(self, puncher, time_from_last_punch, tool_capabili
 	end
 	self.attacker = puncher
 
-	if damage > 0 then
+	if damage and damage > 0 then
 		self.last_damage = {
 			type = "punch",
 			puncher = puncher,
@@ -228,20 +282,21 @@ MUMMY_DEF.on_step = function(self, dtime)
 	self.envdmg_timer = self.envdmg_timer + dtime
 	if dmg > 0 then
 		if self.envdmg_timer >= 1 then
-			self.envdmg_timer = 0
-			self.object:set_hp(self.object:get_hp()-dmg)
-			self.last_damage = {
-				type = "environment",
-				pos = current_pos,
-				node = current_node,
-			}
-			if self.object:get_hp() <= 0 then
+			local new_hp = self.object:get_hp() - dmg
+			if new_hp <= 0 then
 				if self.on_death then
 					self.on_death(self)
 				end
 				self.object:remove()
 				return
 			else
+				self.envdmg_timer = 0
+				self.object:set_hp(new_hp)
+				self.last_damage = {
+					type = "environment",
+					pos = current_pos,
+					node = current_node,
+				}
 				hit(self)
 				self.sound_timer = 0
 				minetest.sound_play(sound_hit, {pos = current_pos, max_hear_distance = 10, gain = 0.4}, true)
@@ -284,20 +339,23 @@ MUMMY_DEF.on_step = function(self, dtime)
 	if self.state == 1 then
 		self.yawwer = true
 		self.attacker = ""
-		for  _,object in ipairs(minetest.get_objects_inside_radius(self.object:get_pos(), 4)) do
-			if object:is_player() then
-				self.yawwer = false
-				local NPC = self.object:get_pos()
-				local PLAYER = object:get_pos()
-				self.vec = {x=PLAYER.x-NPC.x, y=PLAYER.y-NPC.y, z=PLAYER.z-NPC.z}
-				self.yaw = math.atan(self.vec.z/self.vec.x)+math.pi^2
-				if PLAYER.x > NPC.x then
-					self.yaw = self.yaw + math.pi
-				end
-				self.yaw = self.yaw - 2
-				self.object:set_yaw(self.yaw)
-				self.attacker = object
-			end
+		local pos_obj = self.object:get_pos()
+		if pos_obj then
+		   for  _,object in ipairs(minetest.get_objects_inside_radius(pos_obj, 4)) do
+		      if object:is_player() then
+			 self.yawwer = false
+			 local NPC = self.object:get_pos()
+			 local PLAYER = object:get_pos()
+			 self.vec = {x=PLAYER.x-NPC.x, y=PLAYER.y-NPC.y, z=PLAYER.z-NPC.z}
+			 self.yaw = math.atan(self.vec.z/self.vec.x)+math.pi^2
+			 if PLAYER.x > NPC.x then
+			    self.yaw = self.yaw + math.pi
+			 end
+			 self.yaw = self.yaw - 2
+			 self.object:set_yaw(self.yaw)
+			 self.attacker = object
+		      end
+		   end
 		end
 
 		if self.attacker == "" and self.turn_timer > math.random(1,4) then
@@ -306,7 +364,8 @@ MUMMY_DEF.on_step = function(self, dtime)
 			self.turn_timer = 0
 			self.direction = {x = math.sin(self.yaw)*-1, y = -20, z = math.cos(self.yaw)}
 		end
-		self.object:set_velocity({x=0,y=self.object:get_velocity().y,z=0})
+		local old_vel = self.object:get_velocity()
+		self.object:set_velocity({x=0,y=old_vel and old_vel.y or 0,z=0})
 		if self.npc_anim ~= ANIM_STAND then
 			self.anim = get_animations()
 			self.object:set_animation({x=self.anim.stand_START,y=self.anim.stand_END}, mummy_animation_speed, mummy_animation_blend)
@@ -321,7 +380,12 @@ MUMMY_DEF.on_step = function(self, dtime)
 	if self.state == 2 then
 
 		if self.direction ~= nil then
-			self.object:set_velocity({x=self.direction.x*mummy_chillaxin_speed,y=self.object:get_velocity().y,z=self.direction.z*mummy_chillaxin_speed})
+		   local old_vel = self.object:get_velocity()
+		   self.object:set_velocity({
+			 x=self.direction.x*mummy_chillaxin_speed,
+			 y=old_vel and old_vel.y or 0,
+			 z=self.direction.z*mummy_chillaxin_speed,
+		   })
 		end
 		if self.turn_timer > math.random(1,4) and not self.attacker then
 			self.yaw = 360 * math.random()
@@ -406,6 +470,20 @@ else
 	spawnersounds = default.node_sound_stone_defaults()
 end
 
+local spawn_mummy_spawner_entity = function(pos)
+	local spos = vector.new(pos.x, pos.y+spawner_entity_offset, pos.z)
+	minetest.add_entity(spos, "tsm_pyramids:mummy_spawner")
+end
+
+-- Respawn mummy spawner entity at pos if none exists
+local respawn_mummy_spawner_entity = function(pos)
+	local spos = vector.new(pos.x, pos.y + spawner_entity_offset, pos.z)
+	if check_if_mummy_spawner_entity_exists(spos) then
+		return
+	end
+	spawn_mummy_spawner_entity(pos)
+end
+
 minetest.register_node("tsm_pyramids:spawner_mummy", {
 	description = S("Mummy Spawner"),
 	_doc_items_longdesc = S("A mummy spawner causes hostile mummies to appear in its vicinity as long it exists."),
@@ -416,19 +494,32 @@ minetest.register_node("tsm_pyramids:spawner_mummy", {
 	groups = {cracky=1,level=1},
 	drop = "",
 	on_construct = function(pos)
-		pos.y = pos.y - 0.28
-		minetest.add_entity(pos,"tsm_pyramids:mummy_spawner")
+		spawn_mummy_spawner_entity(pos)
+	end,
+	on_punch = function(pos)
+		respawn_mummy_spawner_entity(pos)
 	end,
 	on_destruct = function(pos)
-		for  _,obj in ipairs(minetest.get_objects_inside_radius(pos, 1)) do
-			if not obj:is_player() then 
-				if obj ~= nil and obj:get_luaentity().name == "tsm_pyramids:mummy_spawner" then
+		for  _,obj in ipairs(minetest.get_objects_inside_radius(pos, 0.5)) do
+			if obj ~= nil and not obj:is_player() then
+				if obj:get_luaentity().name == "tsm_pyramids:mummy_spawner" then
 					obj:remove()	
 				end
 			end
 		end
 	end,
 	sounds = spawnersounds,
+})
+
+-- Neccessary in case the spawner entity got lost due to /clearobjects
+minetest.register_lbm({
+	label = "Respawn mummy spawner entity",
+	name = "tsm_pyramids:respawn_mummy_spawner_entity",
+	nodenames = { "tsm_pyramids:spawner_mummy" },
+	run_at_every_load = true,
+	action = function(pos, node)
+		respawn_mummy_spawner_entity(pos)
+	end,
 })
 
 -- Attempt to spawn a mummy at a random appropriate position around pos.
